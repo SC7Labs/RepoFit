@@ -5,7 +5,7 @@
 > A deterministic pre-publication repository-hygiene checklist for common
 > release mistakes.
 
-*Status: `0.1.0` release candidate — not yet published anywhere.*
+Current version: `0.1.0`
 
 ---
 
