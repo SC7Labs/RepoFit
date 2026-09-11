@@ -1,5 +1,6 @@
 """Shared filesystem traversal and inspection utilities for RepoFit."""
 
+import stat
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,6 +84,22 @@ class WalkResult:
         return "; ".join(parts)
 
 
+def _is_directory(entry: Path) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        st = entry.stat(follow_symlinks=True)
+        return stat.S_ISDIR(st.st_mode)
+
+
+def _is_file(entry: Path) -> bool:
+    try:
+        return entry.is_file()
+    except OSError:
+        st = entry.stat(follow_symlinks=True)
+        return stat.S_ISREG(st.st_mode)
+
+
 def walk_repository(
     repo_path: Path,
     max_depth: int = MAX_WALK_DEPTH,
@@ -118,20 +135,23 @@ def walk_repository(
             return
 
         for entry in entries:
-            # Skip symlinks to avoid loops and traversing outside the repository
-            if entry.is_symlink():
-                continue
-
-            if entry.is_dir():
-                if not is_ignored_directory(entry.name):
-                    _walk(entry, current_depth + 1)
-            elif entry.is_file():
-                # Ensure the resolved file path stays within the repository root
-                try:
-                    entry.resolve().relative_to(root_resolved)
-                except ValueError:
+            try:
+                # Skip symlinks to avoid loops and traversing outside the repository
+                if entry.is_symlink():
                     continue
-                files.append(entry)
+
+                if _is_directory(entry):
+                    if not is_ignored_directory(entry.name):
+                        _walk(entry, current_depth + 1)
+                elif _is_file(entry):
+                    # Ensure the resolved file path stays within the repository root
+                    try:
+                        entry.resolve().relative_to(root_resolved)
+                    except (ValueError, OSError):
+                        continue
+                    files.append(entry)
+            except OSError:
+                skipped += 1
 
     _walk(root_resolved, current_depth=0)
     return WalkResult(
